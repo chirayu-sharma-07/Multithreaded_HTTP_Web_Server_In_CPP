@@ -15,7 +15,6 @@
 
 using namespace std;
 
-
 // Chirayu (The Creator of HTTP Web Server)
 
 class Validator
