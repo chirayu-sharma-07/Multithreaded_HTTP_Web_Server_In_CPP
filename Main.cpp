@@ -3,6 +3,7 @@
 #include<forward_list>
 #include<string.h>
 #include<unistd.h>
+#include<sys/stat.h>
 
 #ifdef _WIN32
 #include<windows.h>
@@ -17,6 +18,32 @@ using namespace std;
 
 
 // Chirayu (The Creator of HTTP Web Server)
+
+class FileSystemUtility
+{
+    private:
+    FileSystemUtility(){};
+
+    public:
+    static bool fileExists(const char *path)
+    {
+        int x;
+        struct stat s;
+        x = stat(path, &s);
+        if(x != 0) return false;    // file does not exist
+        if(s.st_mode & S_IFDIR) return false;   // if the value is non zero means it is a directory not a file
+        return true;
+    }
+
+    static bool directoryExists(const char *path)
+    {
+        int x;
+        struct stat s;
+        x = stat(path, &s);
+        if(x != 0) return false;    // directory does not exist
+        return (s.st_mode & S_IFDIR);   // if the value is non zero means it is a directory not a file
+    }
+};
 
 class StringUtility
 {
@@ -77,7 +104,7 @@ class Validator
 
     static bool isValidPath(string &path)
     {
-        return true;
+        return FileSystemUtility::directoryExists(path.c_str());
     }
 
     static bool isValidURLFormat(string &url)
@@ -224,7 +251,8 @@ class Bro
         }
         else
         {
-
+            string exception = string("Invalid static resource folder path : ") + staticResourcesFolder;
+            throw exception;
         }
     }
 
@@ -391,10 +419,14 @@ class Bro
                 close(clientSocketDescriptor);
                 continue;
             }
+            cout<<"Request arrived, URI is : "<<requestURI<<endl;
             auto urlMappingsIterator=urlMappings.find(requestURI);
             if(urlMappingsIterator==urlMappings.end())
             {
-                HttpErrorStatusUtility::sendNotFoundError(clientSocketDescriptor, requestURI);
+                if(!serveStaticResource(clientSocketDescriptor, requestURI))
+                {
+                    HttpErrorStatusUtility::sendNotFoundError(clientSocketDescriptor, requestURI);
+                }
                 close(clientSocketDescriptor);
                 continue;
             }
@@ -428,160 +460,166 @@ class Bro
 
 int main()
 {
-    Bro bro;
-    bro.setStaticResourcesFolder("whatever the folder name is");
-    bro.get("/", [](Request &request, Response &response) -> void {
-        const char *htmlPage = R""""(
-        <!DOCTYPE html>
-        <html lang = 'en'>
+    try
+    {
+        Bro bro;
+        bro.setStaticResourcesFolder("dummy_examples");
+        bro.get("/", [](Request &request, Response &response) -> void {
+            const char *htmlPage = R""""(
+            <!DOCTYPE html>
+            <html lang = 'en'>
+            <head>
+            <meta charset = 'utf-8'>
+            <title>whatever</title>
+            </head>
+            <body>
+            <h1>Hey, Welcome</h1>
+            <a href = 'getCustomers'>Customers</a>
+            </body>
+            </html>
+            )"""";
+            response.setContentType("text/html"); // Setting MIME Type
+            response<<htmlPage;
+        });
+
+        bro.get("/getCustomers", [](Request &request, Response &response) -> void {
+            const char *htmlPage = R""""(
+            <!DOCTYPE html>
+        <html lang="en">
         <head>
-        <meta charset = 'utf-8'>
-        <title>whatever</title>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Dynamic Mesh Configuration</title>
+        <style>
+            * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: Arial, sans-serif;
+            }
+
+            html, body {
+            height: 100%;
+            min-height: 100vh;
+            background-color: #f9f9f9;
+            display: flex;
+            flex-direction: column;
+            }
+
+            header {
+            background-color: #d21134;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 60px;
+            padding: 10px 20px;
+            }
+
+            header img {
+            max-height: 40px;
+            }
+
+            .container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+            padding: 20px;
+            max-width: 900px;
+            margin: 0 auto;
+            width: 100%;
+            }
+
+            h1 {
+            color: #d21134;
+            margin-bottom: 20px;
+            font-size: 22px;
+            text-align: center;
+            }
+
+            .buttons {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 16px;
+            width: 100%;
+            }
+
+            .card {
+            background-color: white;
+            color: #d21134;
+            padding: 20px;
+            border-radius: 10px;
+            border: 2px solid #d21134;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            flex: 1 1 280px;
+            max-width: 300px;
+            text-align: center;
+            }
+
+            .card:hover {
+            background-color: #d21134;
+            color: white;
+            transform: translateY(-3px);
+            box-shadow: 0 8px 16px rgba(0,0,0,0.15);
+            }
+
+            footer {
+            background-color: #f1f1f1;
+            padding: 10px 0;
+            text-align: center;
+            color: #333;
+            font-size: 14px;
+            position: fixed;
+            left: 0;
+            bottom: 0;
+            width: 100%;
+            z-index: 1000;
+            }
+
+            @media (max-width: 480px) {
+            .card {
+                font-size: 14px;
+                padding: 16px;
+            }
+            }
+        </style>
         </head>
         <body>
-        <h1>Hey, Welcome</h1>
-        <a href = 'getCustomers'>Customers</a>
+
+        <div class=container>
+        <h1>Welcome</h1>
+        <div class=buttons>
+        <div class=card onclick=location.href='/getParentChildList'>Get Parent Child List</div>
+        <div class=card onclick=location.href='/massConfiguration'>Mass Configuration</div>
+        <div class=card onclick=location.href='/downLinkConfiguration'>Down Link Configuration</div>
+        <div class=card onclick=location.href='/assignManualUplink'>Assign Manual Uplink(s)</div>
+        <div class=card onclick=location.href='/spiralMeshConfiguration'>Spiral Mesh Configuration</div>
+        <div class=card onclick=location.href='/setFESensorCredentials'>Set FE Sensor Credentials</div>
+        </div></div>
         </body>
         </html>
-        )"""";
-        response.setContentType("text/html"); // Setting MIME Type
-        response<<htmlPage;
-    });
+            )"""";
+            response.setContentType("text/html"); // Setting MIME Type
+            response<<htmlPage;
+        });
 
-    bro.get("/getCustomers", [](Request &request, Response &response) -> void {
-        const char *htmlPage = R""""(
-        <!DOCTYPE html>
-    <html lang="en">
-    <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Dynamic Mesh Configuration</title>
-      <style>
-        * {
-          margin: 0;
-          padding: 0;
-          box-sizing: border-box;
-          font-family: Arial, sans-serif;
-        }
-
-        html, body {
-          height: 100%;
-          min-height: 100vh;
-          background-color: #f9f9f9;
-          display: flex;
-          flex-direction: column;
-        }
-
-        header {
-          background-color: #d21134;
-          display: flex;
-          justify-content: center;
-          align-items: center;
-          height: 60px;
-          padding: 10px 20px;
-        }
-
-        header img {
-          max-height: 40px;
-        }
-
-        .container {
-          flex: 1;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: flex-start;
-          padding: 20px;
-          max-width: 900px;
-          margin: 0 auto;
-          width: 100%;
-        }
-
-        h1 {
-          color: #d21134;
-          margin-bottom: 20px;
-          font-size: 22px;
-          text-align: center;
-        }
-
-        .buttons {
-          display: flex;
-          flex-wrap: wrap;
-          justify-content: center;
-          gap: 16px;
-          width: 100%;
-        }
-
-        .card {
-          background-color: white;
-          color: #d21134;
-          padding: 20px;
-          border-radius: 10px;
-          border: 2px solid #d21134;
-          box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-          font-size: 16px;
-          font-weight: bold;
-          cursor: pointer;
-          transition: all 0.3s ease;
-          flex: 1 1 280px;
-          max-width: 300px;
-          text-align: center;
-        }
-
-        .card:hover {
-          background-color: #d21134;
-          color: white;
-          transform: translateY(-3px);
-          box-shadow: 0 8px 16px rgba(0,0,0,0.15);
-        }
-
-        footer {
-          background-color: #f1f1f1;
-          padding: 10px 0;
-          text-align: center;
-          color: #333;
-          font-size: 14px;
-          position: fixed;
-          left: 0;
-          bottom: 0;
-          width: 100%;
-          z-index: 1000;
-        }
-
-        @media (max-width: 480px) {
-          .card {
-            font-size: 14px;
-            padding: 16px;
-          }
-        }
-      </style>
-    </head>
-    <body>
-
-    <div class=container>
-    <h1>Welcome</h1>
-    <div class=buttons>
-    <div class=card onclick=location.href='/getParentChildList'>Get Parent Child List</div>
-    <div class=card onclick=location.href='/massConfiguration'>Mass Configuration</div>
-    <div class=card onclick=location.href='/downLinkConfiguration'>Down Link Configuration</div>
-    <div class=card onclick=location.href='/assignManualUplink'>Assign Manual Uplink(s)</div>
-    <div class=card onclick=location.href='/spiralMeshConfiguration'>Spiral Mesh Configuration</div>
-    <div class=card onclick=location.href='/setFESensorCredentials'>Set FE Sensor Credentials</div>
-    </div></div>
-    </body>
-    </html>
-        )"""";
-        response.setContentType("text/html"); // Setting MIME Type
-        response<<htmlPage;
-    });
-
-    bro.listen(6060, [](Error &error) -> void {
-        if(error.hasError())
-        {
-            cout<<error.getError()<<endl;
-            return;
-        }
-        cout<<"Bro Server is successfully listening on port number 6060"<<endl;
-    });
+        bro.listen(6060, [](Error &error) -> void {
+            if(error.hasError())
+            {
+                cout<<error.getError()<<endl;
+                return;
+            }
+            cout<<"Bro HTTP Server is successfully listening on port number 6060"<<endl;
+        });
+    }catch(string exception)
+    {
+        cout<<exception<<endl;
+    }
     return 0;
 }
