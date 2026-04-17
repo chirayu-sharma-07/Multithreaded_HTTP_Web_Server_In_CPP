@@ -72,6 +72,7 @@ class HttpErrorStatusUtility
     }
     static void sendNotFoundError(int clientSocketDescriptor, char *requestURI)
     {
+        cout<<"NOT FOUND"<<endl;
         // will optimize this code later on
         char content[1000];
         char header[200];
@@ -207,7 +208,7 @@ class HttpResponseUtility
         sprintf(header,"HTTP/1.1 200 OK\r\nContent-Type:text/html\nContent-Length:%d\nConnection: close\r\n\r\n", contentLength);
         send(clientSocketDescriptor,header,strlen(header),0);
         auto contentIterator = response.content.begin();
-        while(contentIterator!=response.content.end())
+        while(contentIterator != response.content.end())
         {
             string str = *contentIterator;
             send(clientSocketDescriptor,str.c_str(),str.length(),0);
@@ -254,6 +255,46 @@ class Bro
             string exception = string("Invalid static resource folder path : ") + staticResourcesFolder;
             throw exception;
         }
+    }
+
+    bool serveStaticResource(int clientSocketDescriptor, const char *requestURI)
+    {
+        if(this->staticResourcesFolder.length() == 0) return false;
+        if(!FileSystemUtility::directoryExists(this->staticResourcesFolder.c_str())) return false;
+        string resourcePath = this->staticResourcesFolder + string(requestURI);
+        cout<<"Static resource path is : "<<resourcePath<<endl;
+        if(!FileSystemUtility::fileExists(resourcePath.c_str())) return false;
+
+        FILE *file = fopen(resourcePath.c_str(), "rb");
+        if(file == NULL) return false;
+        long fileSize;
+        fseek(file, 0, SEEK_END);
+        fileSize = ftell(file);
+        if(fileSize == 0)
+        {
+            fclose(file);
+            return false;
+        }
+        rewind(file); // to move the internal file pointer to the start of the file
+
+        char header[200];
+        sprintf(header, "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: %ld\r\nConnection: close\r\n\r\n", fileSize);
+        send(clientSocketDescriptor, header, strlen(header), 0);
+        long bytesLeftToRead;
+        int bytesToRead;
+        char buffer[4096];
+        bytesToRead = 4096;
+        bytesLeftToRead = fileSize;
+        while(bytesLeftToRead > 0)
+        {
+            if(bytesLeftToRead < bytesToRead) bytesToRead = bytesLeftToRead;
+            fread(buffer, bytesToRead, 1, file);
+            if(feof(file)) break; // this won't happen in our case but adding this, just to be on the safer side
+            send(clientSocketDescriptor, buffer, bytesToRead, 0);
+            bytesLeftToRead -= bytesToRead;
+        }
+        fclose(file);
+        return true;
     }
 
     void get(string url, void (*callBack)(Request &, Response &))
@@ -463,7 +504,7 @@ int main()
     try
     {
         Bro bro;
-        bro.setStaticResourcesFolder("dummy_examples");
+        bro.setStaticResourcesFolder("static_resources");
         bro.get("/", [](Request &request, Response &response) -> void {
             const char *htmlPage = R""""(
             <!DOCTYPE html>
