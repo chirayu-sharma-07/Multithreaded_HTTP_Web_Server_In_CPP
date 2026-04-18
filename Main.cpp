@@ -3,6 +3,8 @@
 #include<forward_list>
 #include<string.h>
 #include<unistd.h>
+#include<fstream>
+#include<sstream>
 #include<sys/stat.h>
 
 #ifdef _WIN32
@@ -18,6 +20,73 @@ using namespace std;
 
 
 // Chirayu (The Creator of HTTP Web Server)
+
+class BroUtilities
+{
+    private:
+    BroUtilities() {}
+
+    public:
+    static void loadMIMETypes(map<string, string> &mimeTypesMap)
+    {
+        ifstream file("data-for-web-server/mime.types");
+        if(!file.is_open())
+        {
+            cerr<<"Failed to open mime.types file"<<endl;
+            return;
+        }
+
+        string line;
+        while(getline(file, line))
+        {
+            // Skip empty lines and comments
+            if (line.empty() || line[0] == '#')
+                continue;
+
+            // Finding the first tab separating mime type from extensions
+            size_t tabPos = line.find('\t');
+            if(tabPos == string::npos) continue; // No tab found — malformed line, skip it safely
+
+            // Extracting mime type (everything before the first tab)
+            string mimeType = line.substr(0, tabPos);
+
+            // Trimimming trailing whitespace from mimeType
+            while(!mimeType.empty() && (mimeType.back() == ' ' || mimeType.back() == '\r'))
+                mimeType.pop_back();
+
+            if(mimeType.empty()) continue;
+
+            // Extracting extensions portion (everything after the tab(s))
+            size_t extStart = line.find_first_not_of('\t', tabPos);
+            if(extStart == string::npos)
+                continue; // If no extensions on this line, skip
+
+            string extPart = line.substr(extStart);
+
+            // Trimming trailing \r
+            while(!extPart.empty() && (extPart.back() == '\r' || extPart.back() == '\n'))
+                extPart.pop_back();
+
+            if (extPart.empty())
+                continue;
+
+            // Splitting extensions by space and tab, mapping each to the mime type
+            istringstream extStream(extPart);
+            string extension;
+            while(extStream >> extension) // >> skips all whitespace automatically
+            {
+                if(!extension.empty())
+                {
+                    mimeTypesMap.insert({extension, mimeType});
+                    // cout<<extension<<"   ,   "<<mimeType<<endl;
+                }
+            }
+        }
+
+        file.close();
+    }
+};
+
 
 class FileSystemUtility
 {
@@ -42,6 +111,15 @@ class FileSystemUtility
         x = stat(path, &s);
         if(x != 0) return false;    // directory does not exist
         return (s.st_mode & S_IFDIR);   // if the value is non zero means it is a directory not a file
+    }
+
+    static string getFileExtension(const char *path)
+    {
+        int x;
+        x = strlen(path) - 1;
+        while(x >= 0 && path[x] != '.') x--;
+        if(x == -1 || path[x] != '.') return string("");
+        return string(path + (x + 1));
     }
 };
 
@@ -231,12 +309,16 @@ class Bro
 
     string staticResourcesFolder;
     map<string, URLMapping> urlMappings;
+    map<string, string> mimeTypes;
 
     public:
 
     Bro()
     {
-
+	// cout<<"Default Constructure got invoked"<<endl;
+        BroUtilities::loadMIMETypes(mimeTypes);
+        // cout<<"MIME Types size : "<<mimeTypes.size()<<endl;
+        if(mimeTypes.size() == 0) throw string("data-for-web-server folder has been tampered with");
     }
 
     ~Bro()
@@ -276,6 +358,25 @@ class Bro
             return false;
         }
         rewind(file); // to move the internal file pointer to the start of the file
+        string extension, mimeType;
+        extension = FileSystemUtility::getFileExtension(resourcePath.c_str());
+        if(extension.length() > 0)
+        {
+            auto mimeTypesIterator = mimeTypes.find(extension);
+            if(mimeTypesIterator != mimeTypes.end())
+            {
+                mimeType = mimeTypesIterator->second;
+            }
+            else
+            {
+                mimeType = string("text/html");
+            }
+        }
+        else
+        {
+            mimeType = string("text/html");
+        }
+        cout<<resourcePath<<"   ,   "<<extension<<"  ,   "<<mimeType<<endl;
 
         char header[200];
         sprintf(header, "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: %ld\r\nConnection: close\r\n\r\n", fileSize);
@@ -302,6 +403,14 @@ class Bro
         if(Validator::isValidURLFormat(url))
         {
             urlMappings.insert(pair<string, URLMapping>(url, {__GET__, callBack}));
+        }
+    }
+
+    void post(string url, void (*callBack)(Request &, Response &))
+    {
+        if(Validator::isValidURLFormat(url))
+        {
+            urlMappings.insert(pair<string, URLMapping>(url, {__POST__, callBack}));
         }
     }
 
@@ -477,6 +586,11 @@ class Bro
                 HttpErrorStatusUtility::sendMethodNotAllowedError(clientSocketDescriptor,method,requestURI);
                 close(clientSocketDescriptor);
                 continue;
+            }else if(urlMapping.requestMethod==__POST__ && strcmp(method,"post")!=0)
+            {
+                HttpErrorStatusUtility::sendMethodNotAllowedError(clientSocketDescriptor,method,requestURI);
+                close(clientSocketDescriptor);
+                continue;
             }
             // code to parse the header and then the payload if exists starts here
             // code to parse the header and then the payload if exists ends here
@@ -645,6 +759,48 @@ int main()
         </div></div>
         </body>
         </html>
+            )"""";
+            response.setContentType("text/html"); // Setting MIME Type
+            response<<htmlPage;
+        });
+
+        bro.get("/save_test1_data", [](Request &request, Response &response) -> void {
+            const char *htmlPage = R""""(
+            <!DOCTYPE html>
+            <html lang = 'en'>
+            <head>
+            <meta charset = 'utf-8'>
+            <title>Server Testcases</title>
+            </head>
+            <body>
+            <h1>Testcase 1 - GET with query string</h1>
+            <h3>Response from server side</h3>
+            <b>Data Saved</b>
+            <br/><br/>
+            <a href = '/server_testing.html'>Home</a>
+            </body>
+            </html>
+            )"""";
+            response.setContentType("text/html"); // Setting MIME Type
+            response<<htmlPage;
+        });
+
+        bro.post("/save_test2_data", [](Request &request, Response &response) -> void {
+            const char *htmlPage = R""""(
+            <!DOCTYPE html>
+            <html lang = 'en'>
+            <head>
+            <meta charset = 'utf-8'>
+            <title>Server Testcases</title>
+            </head>
+            <body>
+            <h1>Testcase 2 - POST with form data</h1>
+            <h3>Response from server side</h3>
+            <b>Data Saved</b>
+            <br/><br/>
+            <a href = '/server_testing.html'>Home</a>
+            </body>
+            </html>
             )"""";
             response.setContentType("text/html"); // Setting MIME Type
             response<<htmlPage;
