@@ -5,6 +5,7 @@
 #include<unistd.h>
 #include<fstream>
 #include<sstream>
+#include<bits/stdc++.h>
 #include<sys/stat.h>
 
 #ifdef _WIN32
@@ -219,15 +220,61 @@ class Error
 class Request
 {
     private:
+    map<string, string> dataMap;
     char *method;
     char *requestURI;
     char *httpVersion;
-    Request(char *method, char *requestURI, char *httpVersion)
+    Request(char *method, char *requestURI, char *httpVersion, char *dataInRequest)
     {
         this->method = method;
         this->requestURI = requestURI;
         this->httpVersion = httpVersion;
+        if(dataInRequest != NULL && strcmp(this->method, "get") == 0)
+        {
+            createDataMap(dataInRequest, dataMap);
+        }
     }
+
+    void createDataMap(char *str, map<string,string> &dataMap)
+    {
+        char *ptr1, *ptr2;
+        ptr1 = str;
+        ptr2 = str;
+        while(true)
+        {
+            while(*ptr2 != '\0' && *ptr2 != '=') ptr2++;
+            if(*ptr2 == '\0') return;
+            *ptr2 = '\0';
+            string key = string(ptr1);
+            ptr1 = ptr2 + 1;
+            ptr2 = ptr1;
+            while(*ptr2 != '\0' && *ptr2 != '&') ptr2++;
+            if(*ptr2 == '\0')
+            {
+                dataMap.insert(pair<string,string>(key, string(ptr1)));
+                break;
+            }
+            else
+            {
+                *ptr2 = '\0';
+                dataMap.insert(pair<string,string>(key,string(ptr1)));
+                ptr1 = ptr2 + 1;
+                ptr2 = ptr1;
+            }
+        }  // end of infinite loop
+    }
+
+    public:
+    string operator[](string key)
+    {
+        auto iterator = dataMap.find(key);
+        if(iterator == dataMap.end())
+        {
+            return string("");
+        }
+        return iterator->second;
+    }
+
     friend class Bro;
 };
 
@@ -362,6 +409,7 @@ class Bro
         extension = FileSystemUtility::getFileExtension(resourcePath.c_str());
         if(extension.length() > 0)
         {
+            transform(extension.begin(), extension.end(), extension.begin(), ::tolower);
             auto mimeTypesIterator = mimeTypes.find(extension);
             if(mimeTypesIterator != mimeTypes.end())
             {
@@ -493,7 +541,7 @@ class Bro
                 continue;
             }
             int e;
-            char *method, *requestURI, *httpVersion;
+            char *method, *requestURI, *httpVersion, *dataInRequest;
             requestBuffer[requestLength] = '\0';
             // code to parse the first line of the http request starts here
             // first line should be REQUEST_METHOD space URI space HTTPVersionCFRLF
@@ -569,6 +617,15 @@ class Bro
                 close(clientSocketDescriptor);
                 continue;
             }
+            dataInRequest = NULL;
+            e = 0;
+            while(requestURI[e] != '\0' && requestURI[e] != '?') e++;
+            if(requestURI[e] == '?')
+            {
+                requestURI[e] = '\0';
+                dataInRequest = requestURI + e + 1;
+            }
+
             cout<<"Request arrived, URI is : "<<requestURI<<endl;
             auto urlMappingsIterator=urlMappings.find(requestURI);
             if(urlMappingsIterator==urlMappings.end())
@@ -594,7 +651,7 @@ class Bro
             }
             // code to parse the header and then the payload if exists starts here
             // code to parse the header and then the payload if exists ends here
-            Request request(method,requestURI,httpVersion);
+            Request request(method, requestURI, httpVersion, dataInRequest);
             Response response;
             urlMapping.mappedFunction(request,response);
             HttpResponseUtility::sendResponse(clientSocketDescriptor,response);
@@ -765,6 +822,12 @@ int main()
         });
 
         bro.get("/save_test1_data", [](Request &request, Response &response) -> void {
+            string nnn = request["nm"];
+            string ccc = request["ct"];
+            cout<<"Data that arrived in request"<<endl;
+            cout<<nnn<<endl;
+            cout<<ccc<<endl;
+            cout<<"-----------------------------------------------------"<<endl;
             const char *htmlPage = R""""(
             <!DOCTYPE html>
             <html lang = 'en'>
